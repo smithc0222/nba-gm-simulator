@@ -58,6 +58,7 @@ export interface Draft {
   criteria: DraftCriteria;
   currentPickNumber: number;
   shareCode: string;
+  mode: 'online' | 'local';
   createdAt: string;
 }
 

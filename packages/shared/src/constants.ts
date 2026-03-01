@@ -19,6 +19,14 @@ export const BASE_TEAM_SCORE = 100;
 export const SCORE_VARIANCE_STDDEV = 9;
 export const HOME_COURT_BONUS = 3;
 
+// Snake draft pick order: returns 1 or 2 indicating which pickOrder team picks at a given pickNumber
+export function getPickOrder(pickNumber: number): 1 | 2 {
+  const round = Math.ceil(pickNumber / 2);
+  const posInRound = ((pickNumber - 1) % 2) + 1;
+  const isReversed = round % 2 === 0;
+  return (isReversed ? (3 - posInRound) : posInRound) as 1 | 2;
+}
+
 // Position fit penalties (0 = perfect fit, higher = worse)
 export const POSITION_FIT_PENALTY: Record<Position, Record<Position, number>> = {
   PG: { PG: 0, SG: 0.02, SF: 0.05, PF: 0.10, C: 0.15 },

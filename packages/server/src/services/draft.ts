@@ -5,19 +5,54 @@ import { players, playerSeasonStats } from '../db/schema/players.js';
 import { users } from '../db/schema/users.js';
 import { nanoid } from 'nanoid';
 import type { DraftCriteria, Position, PlayerWithStats } from '@nba-gm/shared';
-import { PICKS_PER_TEAM } from '@nba-gm/shared';
+import { PICKS_PER_TEAM, getPickOrder } from '@nba-gm/shared';
 
-export async function createDraft(userId: number, name: string, criteria: DraftCriteria) {
+export async function createDraft(
+  userId: number,
+  name: string,
+  criteria: DraftCriteria,
+  mode: 'online' | 'local' = 'online',
+  team2Name?: string,
+) {
   const shareCode = nanoid();
 
+  if (mode === 'local') {
+    // Create guest user for Player 2
+    const guestEmail = `guest-${nanoid()}@local`;
+    const [guestUser] = await db.insert(users).values({
+      email: guestEmail,
+      passwordHash: '!', // unhashable — can't log in
+      displayName: team2Name!,
+    }).returning();
+
+    const [draft] = await db.insert(drafts).values({
+      name,
+      createdBy: userId,
+      criteria,
+      shareCode,
+      mode: 'local',
+      status: 'drafting',
+      currentPickNumber: 1,
+    }).returning();
+
+    // Both participants created immediately
+    await db.insert(draftParticipants).values([
+      { draftId: draft.id, userId, pickOrder: 1 },
+      { draftId: draft.id, userId: guestUser.id, pickOrder: 2 },
+    ]);
+
+    return draft;
+  }
+
+  // Online mode (original flow)
   const [draft] = await db.insert(drafts).values({
     name,
     createdBy: userId,
     criteria,
     shareCode,
+    mode: 'online',
   }).returning();
 
-  // Creator is participant #1 (pick order 1)
   await db.insert(draftParticipants).values({
     draftId: draft.id,
     userId,
@@ -95,15 +130,9 @@ export async function getDraftPicks(draftId: number) {
     .orderBy(asc(draftPicks.pickNumber));
 }
 
-// Snake draft: 1-2-2-1-2-2-1-2-2-1 for 2 players, 5 picks each
+// Snake draft: uses shared getPickOrder to determine which team picks
 function getPickUserId(pickNumber: number, participants: { userId: number; pickOrder: number }[]): number {
-  const round = Math.ceil(pickNumber / 2); // which round (1-5)
-  const posInRound = ((pickNumber - 1) % 2) + 1; // 1 or 2 within the round
-
-  // Snake: odd rounds go 1→2, even rounds go 2→1
-  const isReversed = round % 2 === 0;
-  const order = isReversed ? (3 - posInRound) : posInRound; // flip for even rounds
-
+  const order = getPickOrder(pickNumber);
   return participants.find(p => p.pickOrder === order)!.userId;
 }
 
@@ -121,19 +150,27 @@ export async function makePick(draftId: number, userId: number, playerId: number
 
   const participants = await getDraftParticipants(draftId);
   const turn = getCurrentTurn(draft.currentPickNumber, participants);
-  if (!turn || turn.userId !== userId) throw new Error('Not your turn');
+  if (!turn) throw new Error('No more picks');
+
+  const isLocal = draft.mode === 'local';
+
+  // In online mode, check it's actually the requesting user's turn
+  if (!isLocal && turn.userId !== userId) throw new Error('Not your turn');
+
+  // The user making this pick (in local mode, determined by snake order)
+  const pickingUserId = isLocal ? turn.userId : userId;
 
   // Check player not already drafted
   const existingPicks = await getDraftPicks(draftId);
   if (existingPicks.some(p => p.playerId === playerId)) throw new Error('Player already drafted');
 
-  // Check user hasn't already assigned this position
-  const userPicks = existingPicks.filter(p => p.userId === userId);
-  if (userPicks.some(p => p.assignedPosition === position)) throw new Error('Position already filled');
+  // Check this team hasn't already assigned this position
+  const teamPicks = existingPicks.filter(p => p.userId === pickingUserId);
+  if (teamPicks.some(p => p.assignedPosition === position)) throw new Error('Position already filled');
 
   await db.insert(draftPicks).values({
     draftId,
-    userId,
+    userId: pickingUserId,
     playerId,
     pickNumber: draft.currentPickNumber,
     assignedPosition: position,

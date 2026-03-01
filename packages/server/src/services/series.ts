@@ -1,7 +1,7 @@
-import { eq, and, or, sql, desc } from 'drizzle-orm';
+import { eq, and, or, ne, sql, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { series, seriesGames } from '../db/schema/series.js';
-import { draftPicks } from '../db/schema/drafts.js';
+import { drafts, draftPicks } from '../db/schema/drafts.js';
 import { players, playerSeasonStats } from '../db/schema/players.js';
 import { users } from '../db/schema/users.js';
 import { simulateSeries, type TeamPlayer } from './simulation.js';
@@ -111,7 +111,8 @@ export async function getLeaderboard() {
       series,
       or(eq(series.team1UserId, users.id), eq(series.team2UserId, users.id))
     )
-    .where(eq(series.status, 'complete'))
+    .innerJoin(drafts, eq(series.draftId, drafts.id))
+    .where(and(eq(series.status, 'complete'), ne(drafts.mode, 'local')))
     .groupBy(users.id, users.displayName)
     .orderBy(desc(sql`count(case when ${series.winnerUserId} = ${users.id} then 1 end)`));
 

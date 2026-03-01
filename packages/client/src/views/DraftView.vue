@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useDraftStore } from '@/stores/draft';
 import { useAuthStore } from '@/stores/auth';
 import { useSeriesStore } from '@/stores/series';
-import { POSITIONS } from '@nba-gm/shared';
+import { POSITIONS, getPickOrder } from '@nba-gm/shared';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
@@ -32,9 +32,29 @@ const draft = computed(() => draftStore.currentDraft?.draft);
 const participants = computed(() => draftStore.currentDraft?.participants || []);
 const picks = computed(() => draftStore.currentDraft?.picks || []);
 const currentTurn = computed(() => draftStore.currentDraft?.currentTurn);
+const isLocal = computed(() => draft.value?.mode === 'local');
 const isMyTurn = computed(() => currentTurn.value?.userId === auth.user?.id);
+const canPick = computed(() => {
+  if (draft.value?.status !== 'drafting') return false;
+  return isLocal.value ? true : isMyTurn.value;
+});
+
+const currentPickingTeamName = computed(() => {
+  if (!currentTurn.value) return '';
+  const p = participants.value.find((p: any) => p.userId === currentTurn.value!.userId);
+  return p?.displayName || '';
+});
 
 const filledPositions = computed(() => {
+  if (!currentTurn.value) return [];
+  if (isLocal.value) {
+    // For local mode, show positions filled by the currently picking team
+    const pickOrder = getPickOrder(draft.value!.currentPickNumber);
+    const teamUserId = participants.value.find((p: any) => p.pickOrder === pickOrder)?.userId;
+    return picks.value
+      .filter((p: any) => p.userId === teamUserId)
+      .map((p: any) => p.assignedPosition);
+  }
   return picks.value
     .filter((p: any) => p.userId === auth.user?.id)
     .map((p: any) => p.assignedPosition);
@@ -52,7 +72,7 @@ const shareUrl = computed(() => {
 onMounted(async () => {
   await draftStore.fetchDraft(draftId);
   await draftStore.fetchPlayers(draftId);
-  if (draft.value?.status === 'drafting') {
+  if (draft.value?.status === 'drafting' && !isLocal.value) {
     draftStore.startPolling(draftId);
   }
 });
@@ -107,7 +127,7 @@ function copyShareLink() {
         <Tag :value="draft.status" :severity="draft.status === 'complete' ? 'success' : draft.status === 'drafting' ? 'info' : 'warn'" />
       </div>
       <div class="flex gap-2 w-full lg:w-auto">
-        <div v-if="draft.status === 'waiting'" class="flex gap-2 items-center w-full lg:w-auto">
+        <div v-if="draft.status === 'waiting' && !isLocal" class="flex gap-2 items-center w-full lg:w-auto">
           <InputText :modelValue="shareUrl" readonly class="flex-1 lg:w-80 text-xs font-mono" />
           <Button icon="pi pi-copy" severity="secondary" size="small" @click="copyShareLink" />
         </div>
@@ -142,8 +162,11 @@ function copyShareLink() {
     </div>
 
     <!-- Turn Indicator -->
-    <div v-if="draft.status === 'drafting' && isMyTurn" class="mb-4 px-4 py-3 bg-court-orange/10 border border-court-orange/30 rounded-lg">
-      <Message severity="info" class="m-0">It's your turn! Pick #{{ currentTurn?.pickNumber }}</Message>
+    <div v-if="draft.status === 'drafting' && canPick" class="mb-4 px-4 py-3 bg-court-orange/10 border border-court-orange/30 rounded-lg">
+      <Message severity="info" class="m-0">
+        <template v-if="isLocal">{{ currentPickingTeamName }}'s turn — Pick #{{ currentTurn?.pickNumber }}</template>
+        <template v-else>It's your turn! Pick #{{ currentTurn?.pickNumber }}</template>
+      </Message>
     </div>
 
     <!-- Draft Picks -->
@@ -190,7 +213,7 @@ function copyShareLink() {
           <Column header="Years">
             <template #body="{ data }">{{ data.careerStartYear }}-{{ data.careerEndYear }}</template>
           </Column>
-          <Column header="" style="width: 6rem" v-if="isMyTurn">
+          <Column header="" style="width: 6rem" v-if="canPick">
             <template #body="{ data }">
               <Button label="Draft" size="small" @click="openPickDialog(data)" />
             </template>

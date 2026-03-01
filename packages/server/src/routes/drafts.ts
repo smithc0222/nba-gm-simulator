@@ -11,7 +11,13 @@ export async function draftRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Validation error', message: parsed.error.message });
     }
 
-    const draft = await draftService.createDraft(request.user!.userId, parsed.data.name, parsed.data.criteria);
+    const draft = await draftService.createDraft(
+      request.user!.userId,
+      parsed.data.name,
+      parsed.data.criteria,
+      parsed.data.mode,
+      parsed.data.team2Name,
+    );
     return { data: draft };
   });
 

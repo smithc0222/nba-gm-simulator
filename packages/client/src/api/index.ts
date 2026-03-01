@@ -17,8 +17,8 @@ export const logout = () => api.post('/auth/logout');
 export const getMe = () => api.get<{ data: User }>('/auth/me');
 
 // Drafts
-export const createDraft = (name: string, criteria: DraftCriteria) =>
-  api.post<{ data: Draft }>('/drafts', { name, criteria });
+export const createDraft = (name: string, criteria: DraftCriteria, mode?: 'online' | 'local', team2Name?: string) =>
+  api.post<{ data: Draft }>('/drafts', { name, criteria, mode, team2Name });
 
 export const getDrafts = () => api.get<{ data: Draft[] }>('/drafts');
 

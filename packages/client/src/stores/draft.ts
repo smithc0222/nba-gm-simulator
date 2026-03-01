@@ -22,10 +22,10 @@ export const useDraftStore = defineStore('draft', () => {
     currentDraft.value = res.data.data;
   }
 
-  async function create(name: string, criteria: DraftCriteria) {
+  async function create(name: string, criteria: DraftCriteria, mode?: 'online' | 'local', team2Name?: string) {
     loading.value = true;
     try {
-      const res = await api.createDraft(name, criteria);
+      const res = await api.createDraft(name, criteria, mode, team2Name);
       return res.data.data;
     } finally {
       loading.value = false;

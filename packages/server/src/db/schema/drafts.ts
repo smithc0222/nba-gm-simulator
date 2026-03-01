@@ -10,6 +10,7 @@ export const drafts = pgTable('drafts', {
   criteria: jsonb('criteria').notNull(),
   currentPickNumber: integer('current_pick_number').notNull().default(0),
   shareCode: varchar('share_code', { length: 21 }).notNull().unique(),
+  mode: varchar('mode', { length: 10 }).notNull().default('online'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
 

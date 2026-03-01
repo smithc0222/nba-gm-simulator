@@ -28,7 +28,12 @@ export const draftCriteriaSchema = z.object({
 export const createDraftSchema = z.object({
   name: z.string().min(1).max(100),
   criteria: draftCriteriaSchema,
-});
+  mode: z.enum(['online', 'local']).default('online'),
+  team2Name: z.string().min(2).max(50).optional(),
+}).refine(
+  (data) => data.mode !== 'local' || (data.team2Name && data.team2Name.length >= 2),
+  { message: 'Player 2 name is required for local mode', path: ['team2Name'] }
+);
 
 // Draft pick
 export const makeDraftPickSchema = z.object({

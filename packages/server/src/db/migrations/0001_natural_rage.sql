@@ -1,0 +1,1 @@
+ALTER TABLE "drafts" ADD COLUMN "mode" varchar(10) DEFAULT 'online' NOT NULL;
