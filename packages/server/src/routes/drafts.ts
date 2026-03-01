@@ -74,6 +74,8 @@ export async function draftRoutes(app: FastifyInstance) {
       if (!draft) return reply.status(404).send({ error: 'Not found', message: 'Draft not found' });
 
       const q = request.query;
+      const picks = await draftService.getDraftPicks(parseInt(request.params.id));
+      const excludePlayerIds = picks.map(p => p.playerId);
       const result = await draftService.getPlayerPool(draft.criteria as any, {
         search: q.search,
         position: q.position as any,
@@ -81,6 +83,7 @@ export async function draftRoutes(app: FastifyInstance) {
         limit: q.limit ? parseInt(q.limit) : undefined,
         sortBy: q.sortBy,
         sortOrder: q.sortOrder as any,
+        excludePlayerIds,
       });
 
       return result;

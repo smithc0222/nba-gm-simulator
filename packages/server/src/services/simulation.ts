@@ -77,44 +77,74 @@ function calculateTeamRatings(team: TeamPlayer[]) {
   return { offense, defense };
 }
 
-function simulatePlayerGameStats(player: TeamPlayer, teamScoreRatio: number): GamePlayerStats {
-  // Scale individual stats proportional to career averages and team performance
-  const scale = clamp(normalRandom(teamScoreRatio, 0.15), 0.5, 1.8);
+function simulateTeamPlayerStats(team: TeamPlayer[], teamScore: number): GamePlayerStats[] {
+  // Generate raw points proportional to career PPG with variance
+  const rawPoints = team.map(p => Math.max(1, normalRandom(p.stats.ppg, p.stats.ppg * 0.25)));
+  const rawSum = rawPoints.reduce((a, b) => a + b, 0);
+  const ratio = teamScore / rawSum;
 
-  const minutes = clamp(Math.round(normalRandom(player.stats.minutesPg, 4)), 12, 42);
-  const minuteScale = minutes / Math.max(player.stats.minutesPg, 1);
+  // Scale and round player points so they sum to teamScore
+  const scaledPoints = rawPoints.map(rp => Math.max(0, Math.round(rp * ratio)));
+  let remainder = teamScore - scaledPoints.reduce((a, b) => a + b, 0);
 
-  const points = Math.max(0, Math.round(player.stats.ppg * scale * minuteScale));
-  const rebounds = Math.max(0, Math.round(player.stats.rpg * scale * minuteScale));
-  const assists = Math.max(0, Math.round(player.stats.apg * scale * minuteScale));
-  const steals = Math.max(0, Math.round(player.stats.spg * scale * minuteScale));
-  const blocks = Math.max(0, Math.round(player.stats.bpg * scale * minuteScale));
+  // Distribute remainder to the highest scorer
+  if (remainder !== 0) {
+    const maxIdx = scaledPoints.indexOf(Math.max(...scaledPoints));
+    scaledPoints[maxIdx] += remainder;
+  }
 
-  // Estimate shot attempts from points
-  const fgAttempted = Math.max(1, Math.round(points / clamp(player.stats.fgPct * 2 + 0.2, 0.6, 1.4)));
-  const fgMade = Math.min(fgAttempted, Math.round(fgAttempted * clamp(normalRandom(player.stats.fgPct, 0.08), 0.1, 0.85)));
-  const threeAttempted = Math.max(0, Math.round(fgAttempted * 0.35));
-  const threeMade = Math.min(threeAttempted, Math.round(threeAttempted * clamp(normalRandom(player.stats.threePct, 0.1), 0, 0.7)));
-  const ftAttempted = Math.max(0, Math.round(points * 0.25));
-  const ftMade = Math.min(ftAttempted, Math.round(ftAttempted * clamp(normalRandom(player.stats.ftPct, 0.08), 0.2, 1.0)));
+  return team.map((player, i) => {
+    const points = scaledPoints[i];
+    const minutes = 48; // No bench with only 5 players
 
-  return {
-    playerId: player.playerId,
-    playerName: player.playerName,
-    position: player.assignedPosition,
-    points,
-    rebounds,
-    assists,
-    steals,
-    blocks,
-    fgMade,
-    fgAttempted,
-    threeMade,
-    threeAttempted,
-    ftMade,
-    ftAttempted,
-    minutes,
-  };
+    // Counting stats from career averages with variance (don't need to reconcile)
+    const rebounds = Math.max(0, Math.round(normalRandom(player.stats.rpg, player.stats.rpg * 0.25)));
+    const assists = Math.max(0, Math.round(normalRandom(player.stats.apg, player.stats.apg * 0.25)));
+    const steals = Math.max(0, Math.round(normalRandom(player.stats.spg, player.stats.spg * 0.4)));
+    const blocks = Math.max(0, Math.round(normalRandom(player.stats.bpg, player.stats.bpg * 0.4)));
+
+    // Derive shot makes/attempts from points so the math checks out:
+    // points = (fgMade - threeMade) * 2 + threeMade * 3 + ftMade
+    const ftPct = clamp(normalRandom(player.stats.ftPct, 0.08), 0.3, 1.0);
+    const ftMade = Math.max(0, Math.round(points * 0.2 * ftPct));
+    const ftAttempted = ftPct > 0 ? Math.max(ftMade, Math.round(ftMade / ftPct)) : 0;
+
+    const fgPoints = points - ftMade; // Points from field goals
+    const threePct = clamp(normalRandom(player.stats.threePct, 0.08), 0, 0.55);
+    const fgPct = clamp(normalRandom(player.stats.fgPct, 0.06), 0.2, 0.75);
+
+    // Estimate 3-point share of field goals
+    const threeShare = clamp(normalRandom(0.3, 0.1), 0.05, 0.6);
+    // Solve: fgPoints = (fgMade - threeMade) * 2 + threeMade * 3
+    //       = fgMade * 2 + threeMade * 1
+    // So: fgMade = (fgPoints - threeMade) / 2
+    // We pick threeMade first, then derive fgMade
+    const threeMade = Math.max(0, Math.min(
+      Math.round(fgPoints / 3 * threeShare), // rough estimate
+      Math.floor(fgPoints / 3) // can't exceed this or fgMade goes negative
+    ));
+    const fgMade = Math.max(threeMade, Math.round((fgPoints - threeMade) / 2 + threeMade));
+    const fgAttempted = fgPct > 0 ? Math.max(fgMade, Math.round(fgMade / fgPct)) : fgMade;
+    const threeAttempted = threePct > 0 ? Math.max(threeMade, Math.round(threeMade / threePct)) : threeMade;
+
+    return {
+      playerId: player.playerId,
+      playerName: player.playerName,
+      position: player.assignedPosition,
+      points,
+      rebounds,
+      assists,
+      steals,
+      blocks,
+      fgMade,
+      fgAttempted,
+      threeMade,
+      threeAttempted,
+      ftMade,
+      ftAttempted,
+      minutes,
+    };
+  });
 }
 
 function simulateGame(
@@ -146,13 +176,10 @@ function simulateGame(
   const finalTeam1Score = team1Score === team2Score ? team1Score + (homeTeam === 1 ? 1 : -1) : team1Score;
   const finalTeam2Score = team1Score === team2Score ? team2Score + (homeTeam === 2 ? 1 : -1) : team2Score;
 
-  // Generate individual stats
-  const team1Ratio = finalTeam1Score / BASE_TEAM_SCORE;
-  const team2Ratio = finalTeam2Score / BASE_TEAM_SCORE;
-
+  // Generate individual stats reconciled to team scores
   const gameLog: GameLog = {
-    team1Players: team1.map(p => simulatePlayerGameStats(p, team1Ratio)),
-    team2Players: team2.map(p => simulatePlayerGameStats(p, team2Ratio)),
+    team1Players: simulateTeamPlayerStats(team1, finalTeam1Score),
+    team2Players: simulateTeamPlayerStats(team2, finalTeam2Score),
   };
 
   return { team1Score: finalTeam1Score, team2Score: finalTeam2Score, gameLog };

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, ref } from 'vue';
+import { onMounted, onUnmounted, computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDraftStore } from '@/stores/draft';
 import { useAuthStore } from '@/stores/auth';
@@ -27,6 +27,10 @@ const showPickDialog = ref(false);
 const selectedPlayer = ref<any>(null);
 const pickPosition = ref('');
 const error = ref('');
+const sortField = ref('name');
+const sortOrder = ref<1 | -1>(1);
+const page = ref(1);
+let searchDebounce: ReturnType<typeof setTimeout> | undefined;
 
 const draft = computed(() => draftStore.currentDraft?.draft);
 const participants = computed(() => draftStore.currentDraft?.participants || []);
@@ -71,7 +75,7 @@ const shareUrl = computed(() => {
 
 onMounted(async () => {
   await draftStore.fetchDraft(draftId);
-  await draftStore.fetchPlayers(draftId);
+  await loadPlayers();
   if (draft.value?.status === 'drafting' && !isLocal.value) {
     draftStore.startPolling(draftId);
   }
@@ -79,12 +83,40 @@ onMounted(async () => {
 
 onUnmounted(() => draftStore.stopPolling());
 
-async function searchPlayers() {
+async function loadPlayers() {
   await draftStore.fetchPlayers(draftId, {
     search: search.value || undefined,
     position: selectedPosition.value || undefined,
+    page: page.value,
+    sortBy: sortField.value,
+    sortOrder: sortOrder.value === 1 ? 'asc' : 'desc',
   });
 }
+
+function onPositionChange() {
+  page.value = 1;
+  loadPlayers();
+}
+
+function onSort(event: { sortField: string | ((item: any) => string) | undefined; sortOrder: 1 | -1 | 0 | null | undefined }) {
+  sortField.value = (event.sortField as string) || 'name';
+  sortOrder.value = (event.sortOrder === -1 ? -1 : 1);
+  page.value = 1;
+  loadPlayers();
+}
+
+function onPage(event: { first: number; rows: number }) {
+  page.value = Math.floor(event.first / event.rows) + 1;
+  loadPlayers();
+}
+
+watch(search, () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    page.value = 1;
+    loadPlayers();
+  }, 300);
+});
 
 function openPickDialog(player: any) {
   selectedPlayer.value = player;
@@ -98,7 +130,7 @@ async function confirmPick() {
   try {
     await draftStore.pick(draftId, selectedPlayer.value.id, pickPosition.value);
     showPickDialog.value = false;
-    await draftStore.fetchPlayers(draftId);
+    await loadPlayers();
   } catch (e: any) {
     error.value = e.response?.data?.message || 'Failed to make pick';
   }
@@ -111,6 +143,10 @@ async function handleSimulate() {
   } catch (e: any) {
     error.value = e.response?.data?.message || 'Failed to simulate';
   }
+}
+
+function getSlotPick(userId: number, position: string) {
+  return picks.value.find((p: any) => p.userId === userId && p.assignedPosition === position) || null;
 }
 
 function copyShareLink() {
@@ -169,20 +205,34 @@ function copyShareLink() {
       </Message>
     </div>
 
-    <!-- Draft Picks -->
+    <!-- Draft Picks — Position Slot Cards -->
     <div class="mb-6">
       <h3 class="text-lg font-semibold mb-2">Draft Picks</h3>
-      <div class="overflow-x-auto">
-        <DataTable :value="picks" stripedRows size="small">
-          <Column field="pickNumber" header="#" style="width: 3rem" />
-          <Column header="Team">
-            <template #body="{ data }">
-              {{ participants.find((p: any) => p.userId === data.userId)?.displayName }}
-            </template>
-          </Column>
-          <Column field="playerName" header="Player" />
-          <Column field="assignedPosition" header="Position" />
-        </DataTable>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div
+          v-for="p in participants"
+          :key="p.userId"
+          class="rounded-lg border border-border p-4"
+          :class="{ 'ring-2 ring-court-orange': draft?.status === 'drafting' && currentTurn?.userId === p.userId }"
+        >
+          <div class="text-sm font-bold mb-3 uppercase tracking-wide text-text-secondary">{{ p.displayName }}</div>
+          <div class="flex flex-col gap-2">
+            <div
+              v-for="pos in POSITIONS"
+              :key="pos"
+              class="flex items-center gap-3 px-3 py-2 rounded-md text-sm"
+              :class="getSlotPick(p.userId, pos)
+                ? 'bg-court-orange/15 border border-court-orange/40'
+                : 'border-2 border-dashed border-border text-text-muted'"
+            >
+              <span class="font-bold w-8">{{ pos }}</span>
+              <span v-if="getSlotPick(p.userId, pos)" class="font-semibold text-text-primary">
+                {{ getSlotPick(p.userId, pos)!.playerName }}
+              </span>
+              <span v-else class="italic">—</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -190,24 +240,34 @@ function copyShareLink() {
     <div v-if="draft.status === 'drafting'">
       <h3 class="text-lg font-semibold mb-2">Available Players</h3>
       <div class="flex flex-col sm:flex-row gap-2 mb-4">
-        <InputText v-model="search" placeholder="Search players..." @keyup.enter="searchPlayers" class="flex-1" />
-        <div class="flex gap-2">
-          <Select v-model="selectedPosition" :options="['', ...POSITIONS]" placeholder="Position" @change="searchPlayers" />
-          <Button icon="pi pi-search" @click="searchPlayers" />
-        </div>
+        <InputText v-model="search" placeholder="Search players..." class="flex-1" />
+        <Select v-model="selectedPosition" :options="['', ...POSITIONS]" placeholder="Position" @change="onPositionChange" />
       </div>
 
       <div class="overflow-x-auto">
-        <DataTable :value="draftStore.playerPool" stripedRows size="small">
-          <Column field="name" header="Player" />
-          <Column field="primaryPosition" header="Pos" style="width: 4rem" />
-          <Column header="PPG">
+        <DataTable
+          :value="draftStore.playerPool"
+          stripedRows
+          size="small"
+          lazy
+          :sortField="sortField"
+          :sortOrder="sortOrder"
+          @sort="onSort"
+          paginator
+          :rows="25"
+          :totalRecords="draftStore.playerPoolTotal"
+          :first="(page - 1) * 25"
+          @page="onPage"
+        >
+          <Column field="name" header="Player" sortable />
+          <Column field="primaryPosition" header="Pos" sortable style="width: 4rem" />
+          <Column header="PPG" sortable sortField="ppg">
             <template #body="{ data }">{{ data.careerStats.ppg.toFixed(1) }}</template>
           </Column>
-          <Column header="RPG">
+          <Column header="RPG" sortable sortField="rpg">
             <template #body="{ data }">{{ data.careerStats.rpg.toFixed(1) }}</template>
           </Column>
-          <Column header="APG">
+          <Column header="APG" sortable sortField="apg">
             <template #body="{ data }">{{ data.careerStats.apg.toFixed(1) }}</template>
           </Column>
           <Column header="Years">
