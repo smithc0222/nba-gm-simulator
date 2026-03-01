@@ -259,7 +259,16 @@ export async function getPlayerPool(criteria: DraftCriteria, options: {
     .leftJoin(playerSeasonStats, eq(players.id, playerSeasonStats.playerId))
     .where(where)
     .groupBy(players.id)
-    .orderBy(sortOrder === 'asc' ? asc(players.name) : desc(players.name))
+    .orderBy((() => {
+      const sortColumn = {
+        name: players.name,
+        primaryPosition: players.primaryPosition,
+        ppg: sql`avg(${playerSeasonStats.ppg})`,
+        rpg: sql`avg(${playerSeasonStats.rpg})`,
+        apg: sql`avg(${playerSeasonStats.apg})`,
+      }[sortBy] ?? players.name;
+      return sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
+    })())
     .limit(limit)
     .offset(offset);
 
