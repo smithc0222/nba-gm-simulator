@@ -43,6 +43,9 @@ scripts/           — Python data ingestion (nba_api → Postgres)
 - Draft share codes use nanoid
 - **Local two-player mode**: `drafts.mode` column (`online` | `local`). Local mode creates a guest user (unhashable password `!`) for Player 2, starts drafting immediately with both participants. Both teams pick from the same screen — server assigns picks via snake order regardless of requesting userId. Local games excluded from leaderboard. SeriesView shows participant display names for both modes.
 
+## Workflow Preferences
+- For multi-milestone work, commit after each milestone rather than batching all changes into one commit at the end.
+
 ## Current Status
 - Phase 1-6 complete: project structure, shared types, DB schema, server routes/services, client views/stores, Python ingestion script
 - Local two-player mode implemented (PR #1)
