@@ -7,10 +7,10 @@ import type {
 
 // Auth
 export const register = (email: string, password: string, displayName: string) =>
-  api.post<{ data: User }>('/auth/register', { email, password, displayName });
+  api.post<{ data: User; token?: string }>('/auth/register', { email, password, displayName });
 
 export const login = (email: string, password: string) =>
-  api.post<{ data: User }>('/auth/login', { email, password });
+  api.post<{ data: User; token?: string }>('/auth/login', { email, password });
 
 export const logout = () => api.post('/auth/logout');
 

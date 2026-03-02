@@ -23,7 +23,8 @@ export function verifyToken(token: string): JwtPayload {
 }
 
 export async function authGuard(request: FastifyRequest, reply: FastifyReply) {
-  const token = request.cookies?.token;
+  const authHeader = request.headers.authorization;
+  const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null) || request.cookies?.token;
   if (!token) {
     return reply.status(401).send({ error: 'Unauthorized', message: 'No token provided' });
   }

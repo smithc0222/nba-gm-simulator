@@ -23,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await api.register(email, password, displayName);
       user.value = res.data.data;
+      if (res.data.token) localStorage.setItem('token', res.data.token);
     } finally {
       loading.value = false;
     }
@@ -33,6 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await api.login(email, password);
       user.value = res.data.data;
+      if (res.data.token) localStorage.setItem('token', res.data.token);
     } finally {
       loading.value = false;
     }
@@ -40,6 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     await api.logout();
+    localStorage.removeItem('token');
     user.value = null;
   }
 

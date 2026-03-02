@@ -34,7 +34,7 @@ export async function authRoutes(app: FastifyInstance) {
         maxAge: 7 * 24 * 60 * 60, // 7 days
       });
 
-      return { data: { id: user.id, email: user.email, displayName: user.displayName } };
+      return { data: { id: user.id, email: user.email, displayName: user.displayName }, token };
     } catch (err) {
       app.log.error(err, 'Registration failed');
       return reply.status(500).send({ error: 'Internal Server Error', message: 'Registration failed. Please try again.' });
@@ -70,7 +70,7 @@ export async function authRoutes(app: FastifyInstance) {
         maxAge: 7 * 24 * 60 * 60,
       });
 
-      return { data: { id: user.id, email: user.email, displayName: user.displayName } };
+      return { data: { id: user.id, email: user.email, displayName: user.displayName }, token };
     } catch (err) {
       app.log.error(err, 'Login failed');
       return reply.status(500).send({ error: 'Internal Server Error', message: 'Login failed. Please try again.' });
