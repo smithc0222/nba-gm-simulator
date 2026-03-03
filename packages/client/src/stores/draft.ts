@@ -11,6 +11,11 @@ export const useDraftStore = defineStore('draft', () => {
   const playerPoolPage = ref(1);
   const loading = ref(false);
   const eventSource = ref<EventSource | null>(null);
+  const sseReconnectTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+  const sseBackoff = ref(1000);
+  const sseRetries = ref(0);
+  const SSE_MAX_RETRIES = 15;
+  const SSE_MAX_BACKOFF = 30000;
 
   async function fetchDrafts() {
     const res = await api.getDrafts();
@@ -61,19 +66,53 @@ export const useDraftStore = defineStore('draft', () => {
 
   function connectSSE(draftId: number) {
     disconnectSSE();
-    const es = new EventSource(`/api/drafts/${draftId}/events`);
-    es.addEventListener('state', (e) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        currentDraft.value = parsed.data;
-      } catch {
-        // ignore malformed messages
-      }
-    });
-    eventSource.value = es;
+
+    function createConnection() {
+      const es = new EventSource(`/api/drafts/${draftId}/events`);
+
+      es.addEventListener('state', (e) => {
+        try {
+          const parsed = JSON.parse(e.data);
+          currentDraft.value = parsed.data;
+          // Reset backoff on successful message
+          sseBackoff.value = 1000;
+          sseRetries.value = 0;
+        } catch {
+          // ignore malformed messages
+        }
+      });
+
+      es.onerror = () => {
+        es.close();
+        eventSource.value = null;
+
+        if (sseRetries.value >= SSE_MAX_RETRIES) {
+          console.warn('SSE: max retries reached, giving up');
+          return;
+        }
+
+        sseRetries.value++;
+        const delay = sseBackoff.value;
+        sseBackoff.value = Math.min(sseBackoff.value * 2, SSE_MAX_BACKOFF);
+
+        sseReconnectTimer.value = setTimeout(() => {
+          createConnection();
+        }, delay);
+      };
+
+      eventSource.value = es;
+    }
+
+    createConnection();
   }
 
   function disconnectSSE() {
+    if (sseReconnectTimer.value) {
+      clearTimeout(sseReconnectTimer.value);
+      sseReconnectTimer.value = null;
+    }
+    sseBackoff.value = 1000;
+    sseRetries.value = 0;
     if (eventSource.value) {
       eventSource.value.close();
       eventSource.value = null;
