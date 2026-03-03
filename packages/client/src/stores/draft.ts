@@ -10,7 +10,7 @@ export const useDraftStore = defineStore('draft', () => {
   const playerPoolTotal = ref(0);
   const playerPoolPage = ref(1);
   const loading = ref(false);
-  const polling = ref<ReturnType<typeof setInterval> | null>(null);
+  const eventSource = ref<EventSource | null>(null);
 
   async function fetchDrafts() {
     const res = await api.getDrafts();
@@ -59,20 +59,29 @@ export const useDraftStore = defineStore('draft', () => {
     }
   }
 
-  function startPolling(draftId: number, intervalMs = 3000) {
-    stopPolling();
-    polling.value = setInterval(() => fetchDraft(draftId), intervalMs);
+  function connectSSE(draftId: number) {
+    disconnectSSE();
+    const es = new EventSource(`/api/drafts/${draftId}/events`);
+    es.addEventListener('state', (e) => {
+      try {
+        const parsed = JSON.parse(e.data);
+        currentDraft.value = parsed.data;
+      } catch {
+        // ignore malformed messages
+      }
+    });
+    eventSource.value = es;
   }
 
-  function stopPolling() {
-    if (polling.value) {
-      clearInterval(polling.value);
-      polling.value = null;
+  function disconnectSSE() {
+    if (eventSource.value) {
+      eventSource.value.close();
+      eventSource.value = null;
     }
   }
 
   return {
     drafts, currentDraft, playerPool, playerPoolTotal, playerPoolPage, loading,
-    fetchDrafts, fetchDraft, create, join, fetchPlayers, callCoinToss, pick, startPolling, stopPolling,
+    fetchDrafts, fetchDraft, create, join, fetchPlayers, callCoinToss, pick, connectSSE, disconnectSSE,
   };
 });

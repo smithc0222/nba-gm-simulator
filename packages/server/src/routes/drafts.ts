@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { authGuard } from '../middleware/auth.js';
+import { authGuard, verifyToken } from '../middleware/auth.js';
 import { createDraftSchema, makeDraftPickSchema, coinTossCallSchema } from '@nba-gm/shared';
 import * as draftService from '../services/draft.js';
+import { addConnection, removeConnection } from '../services/sse.js';
 
 function parseId(raw: string): number {
   const id = parseInt(raw, 10);
@@ -53,6 +54,53 @@ export async function draftRoutes(app: FastifyInstance) {
         currentTurn,
       },
     };
+  });
+
+  // SSE stream for draft updates
+  app.get<{ Params: { id: string } }>('/api/drafts/:id/events', async (request, reply) => {
+    // Auth manually — EventSource can't set custom headers, so read cookie
+    const token = request.cookies?.token;
+    if (!token) {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'No token provided' });
+    }
+    let user;
+    try {
+      user = verifyToken(token);
+    } catch {
+      return reply.status(401).send({ error: 'Unauthorized', message: 'Invalid token' });
+    }
+
+    const draftId = parseId(request.params.id);
+    const draft = await draftService.getDraftById(draftId);
+    if (!draft) return reply.status(404).send({ error: 'Not found', message: 'Draft not found' });
+
+    // Set SSE headers and hijack the response
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    reply.hijack();
+
+    // Send initial state
+    const participants = await draftService.getDraftParticipants(draftId);
+    const picks = await draftService.getDraftPicks(draftId);
+    const currentTurn = draft.status === 'drafting'
+      ? draftService.getCurrentTurn(draft.currentPickNumber, participants)
+      : null;
+
+    const { formatSSE } = await import('../services/sse.js');
+    reply.raw.write(formatSSE('state', {
+      data: { draft, participants, picks, currentTurn },
+    }));
+
+    // Register connection
+    const conn = addConnection(draftId, reply);
+
+    request.raw.on('close', () => {
+      removeConnection(draftId, conn);
+    });
   });
 
   // Join a draft by share code

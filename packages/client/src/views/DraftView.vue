@@ -89,12 +89,12 @@ onMounted(async () => {
   } catch (e: any) {
     error.value = 'Failed to load player pool. Please refresh the page.';
   }
-  if (!isLocal.value && (draft.value?.status === 'drafting' || draft.value?.status === 'coin_toss' || draft.value?.status === 'complete')) {
-    draftStore.startPolling(draftId);
+  if (!isLocal.value && draft.value?.status !== 'complete') {
+    draftStore.connectSSE(draftId);
   }
 });
 
-onUnmounted(() => draftStore.stopPolling());
+onUnmounted(() => draftStore.disconnectSSE());
 
 async function loadPlayers() {
   await draftStore.fetchPlayers(draftId, {
@@ -138,7 +138,7 @@ watch(() => draft.value?.status, async (status) => {
       const res = await api.getDraftSeries(draftId);
       const seriesList = res.data.data;
       if (seriesList.length > 0) {
-        draftStore.stopPolling();
+        draftStore.disconnectSSE();
         router.push(`/series/${seriesList[0].id}`);
       }
     } catch {
