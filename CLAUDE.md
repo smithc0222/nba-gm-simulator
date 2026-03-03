@@ -10,14 +10,14 @@ Multiplayer web-based NBA GM draft simulator. Draft 5 historical NBA players, as
 - **Validation**: Zod (shared package)
 - **Auth**: Email/password (bcrypt + JWT httpOnly cookies)
 - **Testing**: Vitest
-- **Data**: Python `nba_api` scripts for player data ingestion
+- **Data**: Python scripts for player data ingestion (Kaggle SQLite or nba_api)
 
 ## Project Structure
 ```
 packages/shared/   — Types, Zod schemas, constants (positions, simulation constants)
 packages/server/   — Fastify API (routes, services, db schema, middleware)
 packages/client/   — Vue 3 SPA (views, components, stores, API client)
-scripts/           — Python data ingestion (nba_api → Postgres)
+scripts/           — Python data ingestion (Kaggle SQLite or nba_api → Postgres)
 ```
 
 ## Commands
@@ -27,7 +27,8 @@ scripts/           — Python data ingestion (nba_api → Postgres)
 - `npx pnpm db:generate` — generate Drizzle migrations
 - `npx pnpm db:migrate` — run migrations
 - `docker compose up -d` — start PostgreSQL 16
-- `pip install -r scripts/requirements.txt && python scripts/ingest_players.py` — ingest player data
+- `pip install -r scripts/requirements.txt && python scripts/ingest_players.py` — ingest player data (nba_api, modern era only)
+- `python scripts/ingest_kaggle.py --replace` — ingest from Kaggle dataset (full history, 1946-present; auto-downloads via kagglehub, requires one-time Kaggle API token in `~/.kaggle/kaggle.json` from https://www.kaggle.com/settings)
 
 ## Database
 - Connection: `postgresql://nbagm:nbagm_dev@localhost:5432/nba_gm_simulator`
