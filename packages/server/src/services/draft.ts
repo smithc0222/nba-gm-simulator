@@ -6,6 +6,20 @@ import { users } from '../db/schema/users.js';
 import { nanoid } from 'nanoid';
 import type { DraftCriteria, Position, PlayerWithStats } from '@nba-gm/shared';
 import { PICKS_PER_TEAM, getPickOrder } from '@nba-gm/shared';
+import { broadcast } from './sse.js';
+
+async function broadcastDraftState(draftId: number): Promise<void> {
+  const draft = await getDraftById(draftId);
+  if (!draft) return;
+  const participants = await getDraftParticipants(draftId);
+  const picks = await getDraftPicks(draftId);
+  const currentTurn = draft.status === 'drafting'
+    ? getCurrentTurn(draft.currentPickNumber, participants)
+    : null;
+  broadcast(draftId, 'state', {
+    data: { draft, participants, picks, currentTurn },
+  });
+}
 
 export async function createDraft(
   userId: number,
@@ -85,6 +99,7 @@ export async function joinDraft(draftId: number, userId: number) {
     await db.update(drafts)
       .set({ status: 'coin_toss' })
       .where(eq(drafts.id, draftId));
+    await broadcastDraftState(draftId);
   }
 
   return { alreadyJoined: false };
@@ -188,6 +203,8 @@ export async function makePick(draftId: number, userId: number, playerId: number
       .set({ currentPickNumber: nextPick })
       .where(eq(drafts.id, draftId));
   }
+
+  await broadcastDraftState(draftId);
 
   return { pickNumber: draft.currentPickNumber, nextPick: nextPick > totalPicks ? null : nextPick };
 }
@@ -330,6 +347,8 @@ export async function callCoinToss(draftId: number, userId: number, call: 'heads
       .set({ coinTossCall: call, coinTossResult: result, status: 'drafting', currentPickNumber: 1 })
       .where(eq(drafts.id, draftId));
   });
+
+  await broadcastDraftState(draftId);
 
   return { call, result, creatorWon };
 }
