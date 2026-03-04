@@ -57,9 +57,6 @@ const router = createRouter({
   ],
 });
 
-const EMBED_ROUTE_KEY = 'embed_route';
-const isEmbed = window.location.search.includes('embed=1');
-
 router.beforeEach(async (to) => {
   if (to.meta.requiresAuth) {
     const auth = useAuthStore();
@@ -71,23 +68,5 @@ router.beforeEach(async (to) => {
     }
   }
 });
-
-// In embed mode, persist route to localStorage so iframe refreshes restore it
-if (isEmbed) {
-  // Read saved route BEFORE router resolves (afterEach would overwrite it)
-  const savedRoute = localStorage.getItem(EMBED_ROUTE_KEY);
-
-  router.afterEach((to) => {
-    if (to.path !== '/' && to.path !== '/login' && to.path !== '/register') {
-      localStorage.setItem(EMBED_ROUTE_KEY, to.fullPath);
-    }
-  });
-
-  router.isReady().then(() => {
-    if (savedRoute && savedRoute !== '/' && router.currentRoute.value.path === '/') {
-      router.replace(savedRoute);
-    }
-  });
-}
 
 export default router;
