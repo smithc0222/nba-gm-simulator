@@ -1,4 +1,5 @@
 {
+  "buildCommand": "cd ../.. && pnpm --filter @nba-gm/shared build && cd packages/client && pnpm run build",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://nba-gm-simulator-production.up.railway.app/api/:path*" },
