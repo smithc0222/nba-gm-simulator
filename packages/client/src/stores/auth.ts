@@ -43,6 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     await api.logout();
     localStorage.removeItem('token');
+    localStorage.removeItem('embed_route');
     user.value = null;
   }
 
