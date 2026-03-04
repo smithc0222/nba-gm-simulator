@@ -21,7 +21,7 @@ const modeOptions = [
   { label: 'Local Two-Player', value: 'local' },
 ];
 const useYearRange = ref(true);
-const startYear = ref(1980);
+const startYear = ref(1970);
 const endYear = ref(2024);
 const useDraftClass = ref(false);
 const draftClassYear = ref(2003);

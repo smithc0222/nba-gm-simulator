@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
 Ingest NBA player data from nba_api into PostgreSQL.
-Run: python scripts/ingest_players.py
+
+Usage:
+  python scripts/ingest_players.py              # All players (no year filter)
+  python scripts/ingest_players.py --year 1984  # Only players whose career started in 1984
 
 Requires: pip install nba_api psycopg2-binary
 """
 
+import argparse
 import os
 import sys
 import time
@@ -20,6 +24,8 @@ DB_URL = os.environ.get(
 )
 
 DELAY = 2.5  # seconds between API calls to respect rate limits
+MAX_RETRIES = 3
+INITIAL_BACKOFF = 3  # seconds
 
 
 def get_connection():
@@ -91,19 +97,40 @@ def map_position(pos_str):
     return POSITION_MAP.get(pos_str, pos_str[:2].upper() if pos_str else None)
 
 
-def ingest():
+def api_call_with_retry(fn, description="API call"):
+    """Call fn() with retry logic (3 attempts, exponential backoff)."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                wait = INITIAL_BACKOFF * (2 ** attempt)
+                print(f"  Retry {attempt + 1}/{MAX_RETRIES} for {description} (waiting {wait}s): {e}")
+                time.sleep(wait)
+            else:
+                raise
+
+
+def ingest(target_year=None):
     conn = get_connection()
     ensure_tables(conn)
 
     print("Fetching all players list...")
-    all_players = CommonAllPlayers(is_only_current_season=0).get_data_frames()[0]
+    all_players = api_call_with_retry(
+        lambda: CommonAllPlayers(is_only_current_season=0).get_data_frames()[0],
+        "CommonAllPlayers"
+    )
     print(f"Found {len(all_players)} total players")
 
     # Filter to players who have played at least one game
     active_players = all_players[all_players["TO_YEAR"].notna() & (all_players["TO_YEAR"] != "")]
 
-    # Filter to modern era (career start >= 2001)
-    active_players = active_players[active_players["FROM_YEAR"].astype(int) >= 2001]
+    if target_year is not None:
+        # Filter to players whose career started in the target year
+        active_players = active_players[active_players["FROM_YEAR"].astype(int) == target_year]
+        print(f"Filtered to {len(active_players)} players with career start year {target_year}")
+    else:
+        print(f"No year filter — processing all {len(active_players)} active players")
 
     with conn.cursor() as cur:
         # Check which players we already have
@@ -114,6 +141,7 @@ def ingest():
     inserted = 0
     skipped = 0
     errors = 0
+    notable_players = []
 
     for idx, row in active_players.iterrows():
         nba_id = int(row["PERSON_ID"])
@@ -125,9 +153,14 @@ def ingest():
         try:
             time.sleep(DELAY)
 
+            player_name = row["DISPLAY_FIRST_LAST"]
+
             # Get player info (draft details, position)
-            print(f"[{inserted + skipped + errors + 1}/{total}] Fetching {row['DISPLAY_FIRST_LAST']} (ID: {nba_id})...")
-            info_df = CommonPlayerInfo(player_id=nba_id).get_data_frames()[0]
+            print(f"[{inserted + skipped + errors + 1}/{total}] Fetching {player_name} (ID: {nba_id})...")
+            info_df = api_call_with_retry(
+                lambda nid=nba_id: CommonPlayerInfo(player_id=nid).get_data_frames()[0],
+                f"CommonPlayerInfo({player_name})"
+            )
             info = info_df.iloc[0] if len(info_df) > 0 else None
 
             draft_year = safe_int(info["DRAFT_YEAR"]) if info is not None else None
@@ -145,7 +178,7 @@ def ingest():
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (nba_id) DO NOTHING
                     RETURNING id
-                """, (nba_id, row["DISPLAY_FIRST_LAST"], draft_year, draft_round, draft_number, from_year, to_year, position))
+                """, (nba_id, player_name, draft_year, draft_round, draft_number, from_year, to_year, position))
                 result = cur.fetchone()
                 if not result:
                     skipped += 1
@@ -159,7 +192,10 @@ def ingest():
             # Get career stats (may fail for players with minimal NBA time)
             try:
                 time.sleep(DELAY)
-                career = PlayerCareerStats(player_id=nba_id, per_mode36="PerGame").get_data_frames()
+                career = api_call_with_retry(
+                    lambda nid=nba_id: PlayerCareerStats(player_id=nid, per_mode36="PerGame").get_data_frames(),
+                    f"PlayerCareerStats({player_name})"
+                )
 
                 if len(career) > 0:
                     season_stats = career[0]  # Regular season per-game stats
@@ -191,9 +227,10 @@ def ingest():
                 conn.commit()
             except Exception as stat_err:
                 conn.rollback()
-                print(f"  WARN: No stats for {row['DISPLAY_FIRST_LAST']}: {stat_err}", file=sys.stderr)
+                print(f"  WARN: No stats for {player_name}: {stat_err}", file=sys.stderr)
 
             inserted += 1
+            notable_players.append(player_name)
 
             if inserted % 50 == 0:
                 print(f"  Progress: {inserted} inserted, {skipped} skipped, {errors} errors")
@@ -204,9 +241,26 @@ def ingest():
             print(f"  ERROR on {row['DISPLAY_FIRST_LAST']}: {e}", file=sys.stderr)
             continue
 
-    print(f"\nDone! Inserted: {inserted}, Skipped: {skipped}, Errors: {errors}")
+    # Summary
+    year_label = f"year {target_year}" if target_year else "all years"
+    print(f"\n{'=' * 60}")
+    print(f"Summary for {year_label}:")
+    print(f"  Total candidates: {total}")
+    print(f"  Inserted:         {inserted}")
+    print(f"  Skipped (exist):  {skipped}")
+    print(f"  Errors:           {errors}")
+    if notable_players:
+        print(f"  Players ingested: {', '.join(notable_players[:20])}")
+        if len(notable_players) > 20:
+            print(f"    ... and {len(notable_players) - 20} more")
+    print(f"{'=' * 60}")
+
     conn.close()
 
 
 if __name__ == "__main__":
-    ingest()
+    parser = argparse.ArgumentParser(description="Ingest NBA player data from nba_api into PostgreSQL")
+    parser.add_argument("--year", type=int, default=None,
+                        help="Only ingest players whose career started in this year (e.g., --year 1984)")
+    args = parser.parse_args()
+    ingest(target_year=args.year)
