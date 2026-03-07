@@ -2,6 +2,7 @@
 import { onMounted } from 'vue';
 import { useDraftStore } from '@/stores/draft';
 import { useToast } from 'primevue/usetoast';
+import { useConfirm } from 'primevue/useconfirm';
 import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -10,6 +11,7 @@ import Card from 'primevue/card';
 
 const draftStore = useDraftStore();
 const toast = useToast();
+const confirm = useConfirm();
 
 onMounted(() => draftStore.fetchDrafts());
 
@@ -26,6 +28,25 @@ function statusSeverity(status: string) {
     case 'complete': return 'success';
     default: return 'secondary';
   }
+}
+
+function confirmDelete(draftId: number, draftName: string) {
+  confirm.require({
+    message: `Are you sure you want to delete "${draftName}"?`,
+    header: 'Delete Draft',
+    icon: 'pi pi-trash',
+    rejectLabel: 'Cancel',
+    acceptLabel: 'Delete',
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      try {
+        await draftStore.deleteDraft(draftId);
+        toast.add({ severity: 'success', summary: 'Draft deleted', life: 2000 });
+      } catch {
+        toast.add({ severity: 'error', summary: 'Failed to delete draft', life: 3000 });
+      }
+    },
+  });
 }
 </script>
 
@@ -60,7 +81,10 @@ function statusSeverity(status: string) {
                 </router-link>
                 <div class="text-xs text-text-muted mt-1">{{ new Date(d.createdAt).toLocaleDateString() }}</div>
               </div>
-              <Tag :value="d.status" :severity="statusSeverity(d.status)" />
+              <div class="flex items-center gap-2">
+                <Tag :value="d.status" :severity="statusSeverity(d.status)" />
+                <Button v-if="d.status !== 'complete'" icon="pi pi-trash" severity="danger" size="small" text @click="confirmDelete(d.id, d.name)" />
+              </div>
             </div>
             <div class="mt-2 flex items-center gap-2">
               <code class="text-xs bg-surface px-2 py-1 rounded font-mono">{{ d.shareCode }}</code>
@@ -96,6 +120,11 @@ function statusSeverity(status: string) {
           <Column field="createdAt" header="Created">
             <template #body="{ data }">
               {{ new Date(data.createdAt).toLocaleDateString() }}
+            </template>
+          </Column>
+          <Column header="">
+            <template #body="{ data }">
+              <Button v-if="data.status !== 'complete'" icon="pi pi-trash" severity="danger" size="small" text @click="confirmDelete(data.id, data.name)" />
             </template>
           </Column>
         </DataTable>

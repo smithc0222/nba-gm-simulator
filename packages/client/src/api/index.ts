@@ -24,6 +24,8 @@ export const getDrafts = () => api.get<{ data: Draft[] }>('/drafts');
 
 export const getDraft = (id: number) => api.get<{ data: any }>(`/drafts/${id}`);
 
+export const deleteDraft = (id: number) => api.delete(`/drafts/${id}`);
+
 export const joinDraft = (shareCode: string) =>
   api.post<{ data: { draftId: number; alreadyJoined: boolean } }>(`/drafts/join/${shareCode}`);
 

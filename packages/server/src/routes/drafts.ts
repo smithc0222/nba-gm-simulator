@@ -34,6 +34,18 @@ export async function draftRoutes(app: FastifyInstance) {
     return { data: drafts };
   });
 
+  // Delete an incomplete draft
+  app.delete<{ Params: { id: string } }>('/api/drafts/:id', { preHandler: authGuard }, async (request, reply) => {
+    const draftId = parseId(request.params.id);
+    try {
+      await draftService.deleteDraft(draftId, request.user!.userId);
+      return reply.status(204).send();
+    } catch (e: any) {
+      const status = e.statusCode || 400;
+      return reply.status(status).send({ error: 'Error', message: e.message });
+    }
+  });
+
   // Get draft by ID (full state)
   app.get<{ Params: { id: string } }>('/api/drafts/:id', { preHandler: authGuard }, async (request, reply) => {
     const draftId = parseId(request.params.id);

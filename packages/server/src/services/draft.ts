@@ -353,6 +353,19 @@ export async function callCoinToss(draftId: number, userId: number, call: 'heads
   return { call, result, creatorWon };
 }
 
+export function validateDraftDeletion(draft: { createdBy: number; status: string }, userId: number) {
+  if (draft.createdBy !== userId) throw Object.assign(new Error('Only the draft creator can delete a draft'), { statusCode: 403 });
+  if (draft.status === 'complete') throw Object.assign(new Error('Cannot delete a completed draft'), { statusCode: 400 });
+}
+
+export async function deleteDraft(draftId: number, userId: number) {
+  const draft = await getDraftById(draftId);
+  if (!draft) throw Object.assign(new Error('Draft not found'), { statusCode: 404 });
+  validateDraftDeletion(draft, userId);
+
+  await db.delete(drafts).where(eq(drafts.id, draftId));
+}
+
 export async function getUserDrafts(userId: number) {
   return db
     .select({

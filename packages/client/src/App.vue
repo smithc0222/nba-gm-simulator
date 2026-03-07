@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 import Menubar from 'primevue/menubar';
 import Button from 'primevue/button';
 import Toast from 'primevue/toast';
+import ConfirmDialog from 'primevue/confirmdialog';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -26,6 +27,7 @@ async function handleLogout() {
 <template>
   <div class="min-h-screen flex flex-col bg-surface">
     <Toast />
+    <ConfirmDialog />
     <Menubar :model="menuItems" class="sticky top-0 z-50">
       <template #start>
         <span class="font-black text-xl uppercase tracking-tight cursor-pointer flex items-center gap-2" @click="router.push('/')">
