@@ -29,6 +29,13 @@
       "when": 1772489197540,
       "tag": "0003_clumsy_imperial_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772921589689,
+      "tag": "0004_powerful_stranger",
+      "breakpoints": true
     }
   ]
 }

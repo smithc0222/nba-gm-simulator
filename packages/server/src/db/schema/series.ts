@@ -4,7 +4,7 @@ import { drafts } from './drafts';
 
 export const series = pgTable('series', {
   id: serial('id').primaryKey(),
-  draftId: integer('draft_id').notNull().references(() => drafts.id),
+  draftId: integer('draft_id').notNull().references(() => drafts.id, { onDelete: 'cascade' }),
   team1UserId: integer('team1_user_id').notNull().references(() => users.id),
   team2UserId: integer('team2_user_id').notNull().references(() => users.id),
   status: varchar('status', { length: 20 }).notNull().default('pending'),

@@ -54,6 +54,11 @@ export const useDraftStore = defineStore('draft', () => {
     return res.data.data;
   }
 
+  async function deleteDraft(id: number) {
+    await api.deleteDraft(id);
+    drafts.value = drafts.value.filter(d => d.id !== id);
+  }
+
   async function pick(draftId: number, playerId: number, position: string) {
     loading.value = true;
     try {
@@ -121,6 +126,6 @@ export const useDraftStore = defineStore('draft', () => {
 
   return {
     drafts, currentDraft, playerPool, playerPoolTotal, playerPoolPage, loading,
-    fetchDrafts, fetchDraft, create, join, fetchPlayers, callCoinToss, pick, connectSSE, disconnectSSE,
+    fetchDrafts, fetchDraft, create, join, deleteDraft, fetchPlayers, callCoinToss, pick, connectSSE, disconnectSSE,
   };
 });
