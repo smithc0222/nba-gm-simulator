@@ -10,6 +10,7 @@ Requires: pip install nba_api psycopg2-binary
 """
 
 import argparse
+import math
 import os
 import sys
 import time
@@ -75,7 +76,8 @@ def safe_int(val, default=None):
 
 def safe_float(val, default=0.0):
     try:
-        return float(val) if val is not None else default
+        result = float(val) if val is not None else default
+        return default if math.isnan(result) else result
     except (ValueError, TypeError):
         return default
 

@@ -37,6 +37,32 @@ const team2: TeamPlayer[] = [
   makePlayer(10, 'Player J', 'C'),
 ];
 
+function makeZeroThreePlayer(id: number, name: string, pos: 'PG' | 'SG' | 'SF' | 'PF' | 'C'): TeamPlayer {
+  return {
+    playerId: id,
+    playerName: name,
+    assignedPosition: pos,
+    primaryPosition: pos,
+    stats: {
+      ppg: 25, rpg: 10, apg: 5, spg: 1.5, bpg: 2.0,
+      fgPct: 0.52, ftPct: 0.72, threePct: 0, minutesPg: 36,
+    },
+  };
+}
+
+function makeAllZeroPlayer(id: number, name: string, pos: 'PG' | 'SG' | 'SF' | 'PF' | 'C'): TeamPlayer {
+  return {
+    playerId: id,
+    playerName: name,
+    assignedPosition: pos,
+    primaryPosition: pos,
+    stats: {
+      ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0,
+      fgPct: 0, ftPct: 0, threePct: 0, minutesPg: 0,
+    },
+  };
+}
+
 const ITERATIONS = 50;
 
 describe('simulateSeries', () => {
@@ -99,4 +125,71 @@ describe('simulateSeries', () => {
       }
     });
   }
+
+  describe('pre-3-point-era players (threePct = 0)', () => {
+    const preThreeTeam: TeamPlayer[] = [
+      makeZeroThreePlayer(11, 'Pre3pt PG', 'PG'),
+      makePlayer(12, 'Normal SG', 'SG'),
+      makePlayer(13, 'Normal SF', 'SF'),
+      makePlayer(14, 'Normal PF', 'PF'),
+      makeZeroThreePlayer(15, 'Pre3pt C', 'C'),
+    ];
+
+    for (let run = 0; run < 20; run++) {
+      it(`iteration ${run + 1}: produces valid scores with zero threePct`, () => {
+        const result = simulateSeries(preThreeTeam, team2, 2001, 2002);
+
+        expect(result.games.length).toBeGreaterThanOrEqual(4);
+        expect(result.games.length).toBeLessThanOrEqual(7);
+
+        for (const game of result.games) {
+          expect(Number.isFinite(game.team1Score)).toBe(true);
+          expect(Number.isFinite(game.team2Score)).toBe(true);
+          expect(game.team1Score).toBeGreaterThanOrEqual(75);
+          expect(game.team1Score).toBeLessThanOrEqual(140);
+
+          for (const player of [...game.gameLog.team1Players, ...game.gameLog.team2Players]) {
+            expect(Number.isFinite(player.points)).toBe(true);
+            expect(Number.isFinite(player.fgAttempted)).toBe(true);
+            expect(Number.isFinite(player.fgMade)).toBe(true);
+            expect(Number.isFinite(player.ftAttempted)).toBe(true);
+            expect(Number.isFinite(player.ftMade)).toBe(true);
+            expect(Number.isFinite(player.threeAttempted)).toBe(true);
+            expect(Number.isFinite(player.threeMade)).toBe(true);
+          }
+        }
+      });
+    }
+  });
+
+  describe('all-zero stats players', () => {
+    const zeroTeam: TeamPlayer[] = [
+      makeAllZeroPlayer(21, 'Zero PG', 'PG'),
+      makeAllZeroPlayer(22, 'Zero SG', 'SG'),
+      makeAllZeroPlayer(23, 'Zero SF', 'SF'),
+      makeAllZeroPlayer(24, 'Zero PF', 'PF'),
+      makeAllZeroPlayer(25, 'Zero C', 'C'),
+    ];
+
+    for (let run = 0; run < 20; run++) {
+      it(`iteration ${run + 1}: produces valid scores with all-zero stats`, () => {
+        const result = simulateSeries(zeroTeam, team2, 3001, 3002);
+
+        expect(result.games.length).toBeGreaterThanOrEqual(4);
+        expect(result.games.length).toBeLessThanOrEqual(7);
+
+        for (const game of result.games) {
+          expect(Number.isFinite(game.team1Score)).toBe(true);
+          expect(Number.isFinite(game.team2Score)).toBe(true);
+          expect(game.team1Score).not.toBe(game.team2Score);
+
+          for (const player of [...game.gameLog.team1Players, ...game.gameLog.team2Players]) {
+            expect(Number.isFinite(player.points)).toBe(true);
+            expect(Number.isFinite(player.fgAttempted)).toBe(true);
+            expect(Number.isFinite(player.fgMade)).toBe(true);
+          }
+        }
+      });
+    }
+  });
 });

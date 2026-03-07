@@ -34,7 +34,9 @@ interface TeamPlayer {
 
 // Box-Muller transform for normal distribution
 function normalRandom(mean: number, stddev: number): number {
-  const u1 = Math.random();
+  if (!Number.isFinite(mean)) return 0;
+  if (!Number.isFinite(stddev) || stddev <= 0) return mean;
+  const u1 = Math.max(Number.MIN_VALUE, Math.random());
   const u2 = Math.random();
   const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
   return mean + z * stddev;
